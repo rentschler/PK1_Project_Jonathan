@@ -24,7 +24,9 @@ public class MyLine extends Line {
 
         isVertical = Utilities.doubleComparison(pointOne.getX() - pointTwo.getX(), 0);
         if (isVertical) {
-            System.out.println("warning: vertical line");
+            System.out.println("warning: vertical line moved one coordinate ");
+            this.pointOne.setCenterX(pointOne.getX()+0.1);
+            pointOne.setX(pointOne.getX()+0.1);
         }
 
         slope = Utilities.getSlope(pointOne, pointTwo);
@@ -45,8 +47,9 @@ public class MyLine extends Line {
 
         isVertical = Utilities.doubleComparison(pointOne.getX() - pointTwo.getX(), 0);
         if (isVertical) {
-            System.out.println("warning: vertical line");
-        }
+            System.out.println("warning: vertical line moved one coordinate ");
+            this.pointOne.setCenterX(pointOne.getX()+0.01);
+            pointOne.setX(pointOne.getX()+0.01);        }
 
         slope = Utilities.getSlope(pointOne, pointTwo);
         intercept = Utilities.getIntercept(pointOne, pointTwo);
@@ -159,6 +162,8 @@ public class MyLine extends Line {
      * @return true if line is vertical
      */
     public boolean isVertical() {
-        return isVertical;
+        boolean returnValue = isVertical||Math.abs(slope)>1000;
+        System.out.println("is Vertical "+ returnValue);
+        return returnValue;
     }
 }

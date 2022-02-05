@@ -5,8 +5,10 @@ import geoviz.MyLine;
 import geoviz.MyPoint;
 import geoviz.Utilities;
 import javafx.application.Application;
+import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Pane;
@@ -16,6 +18,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 
 /**
@@ -23,11 +26,14 @@ import java.util.ArrayList;
  * This class is the starting point for building a user interface (UI).
  */
 public class Draw extends Application {
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_RED = "\u001B[31m";
+
     private final ArrayList<MyPoint> myPointArrayList = new ArrayList<>();
     private final ArrayList<MyPoint> myPointIntersectionArrayList = new ArrayList<>();
     private final ArrayList<MyLine> myLineArrayList = new ArrayList<>();
     private final ArrayList<MyCircle> myCircleArrayList = new ArrayList<>();
-    public ColorPicker colorPicker;
+    private ColorPicker colorPicker;
     public double coordinateSystemWidth, coordinateSystemHeight;
     private Pane coordinateSystem;
     private MyPoint recentMyPoint = null;
@@ -35,7 +41,8 @@ public class Draw extends Application {
     private boolean fill = false;
     private Label temporaryLabel;
     private boolean hoveringMyPoint = false;
-    private boolean drawIntersections = true;
+    private boolean drawIntersections = false;
+    Group coordinateSystemLinesGroup = new Group();
 
     /**
      * This method is optional. However, it is called before running the start
@@ -46,6 +53,7 @@ public class Draw extends Application {
         System.out.println("1. Called before running start(Stage primaryStage).");
         coordinateSystemWidth = 1280;
         coordinateSystemHeight = 630;
+        drawIntersections = true;
     }
 
     /**
@@ -63,12 +71,23 @@ public class Draw extends Application {
 
         primaryStage.setScene(scene);
         primaryStage.setTitle("PK1 Project Jonathan Rentschler");
+        try {
+            //try to set the icon
+            InputStream stream = Draw.class.getResourceAsStream("Hello.png");
+            if (stream != null) {
+                Image image = new Image(stream);
+                primaryStage.getIcons().add(image);
+            }
+        } catch (NullPointerException e) {
+            System.out.println("failed to load icon");
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        primaryStage.setMinHeight(420);
+        primaryStage.setMinWidth(420);
         primaryStage.show();
 
-//        coordinateSystemWidth = primaryStage.getWidth();
-//        coordinateSystemHeight = primaryStage.getHeight();
-//        System.out.println("height: " + this.coordinateSystemHeight);
-//        System.out.println("width: " + this.coordinateSystemWidth);
 
         //top layout
         CheckBox btnFill = new CheckBox("Fill");
@@ -76,6 +95,7 @@ public class Draw extends Application {
         RadioButton rdBtnLine = new RadioButton("line");
         RadioButton rdBtnCircle = new RadioButton("circle");
         colorPicker = new ColorPicker();
+        colorPicker.setValue(Color.DARKGRAY);
 
         ToggleGroup toggleGroup = new ToggleGroup();
         rdBtnLine.setToggleGroup(toggleGroup);
@@ -95,7 +115,8 @@ public class Draw extends Application {
         ToolBar toolBarBottom = new ToolBar();
         Button btnLoad = new Button("Load Data");
         Button btnClear = new Button("Clear Screen");
-        toolBarBottom.getItems().setAll(btnLoad, btnClear);
+        Button btnRefresh = new Button("Refresh");
+        toolBarBottom.getItems().setAll(btnLoad, btnClear, btnRefresh);
 
         //borderLayout
         root.setCenter(coordinateSystem);
@@ -117,26 +138,26 @@ public class Draw extends Application {
             }
         });
         btnIntersection.setOnAction(event -> {
-            ArrayList<MyPoint[]> pointList = Utilities.calculateIntersections(this.myLineArrayList, this.myCircleArrayList);
             if (drawIntersections) {
-
+                btnIntersection.setText("Hide Intersections");
+                ArrayList<MyPoint[]> pointList = Utilities.calculateIntersections(this.myLineArrayList, this.myCircleArrayList);
                 for (MyPoint[] points : pointList) {
                     if (points != null) {
                         for (MyPoint point : points) {
                             maybeDrawPoint(point);
-
-
                         }
                     }
                 }
             } else {
+                btnIntersection.setText("Show Intersections");
                 for (MyPoint pointTmp : myPointIntersectionArrayList
                 ) {
+                    //remove intersections
                     this.coordinateSystem.getChildren().remove(pointTmp);
                 }
+                this.myPointIntersectionArrayList.clear();
             }
             drawIntersections = !drawIntersections;
-
         });
         btnLoad.setOnAction(event -> {
             //File chooser
@@ -149,23 +170,17 @@ public class Draw extends Application {
                     for (MyPoint point : points) {
                         point.setCenterX(point.getX());
                         double y = point.getY();
-                        point.setY(this.coordinateSystemHeight-y);
+                        point.setY(this.coordinateSystemHeight - y);
                         point.setCenterY(this.coordinateSystemHeight - y);
                         System.out.println(point);
                         drawMyPoint(point);
                     }
-                }
-                else {
+                } else {
                     System.out.println("invalid File");
                 }
-            }
-            else {
+            } else {
                 System.out.println("invalid read");
             }
-//            else {
-//                file = new File("src" + File.separator + "geoviz" + File.separator + "DataPoints.txt");
-//                geoviz.DataReader.bufferedReader(file);
-//            }
         });
         btnClear.setOnAction(event -> {
             System.out.println("remove everything");
@@ -176,6 +191,11 @@ public class Draw extends Application {
             removeTemporaryLabel();
             drawCoordinateSystem();
         });
+        btnRefresh.setOnAction(event -> {
+            System.out.println("refresh coordinate system");
+            redrawMyPoints();
+        });
+
 
         //Mouse click event handler
         coordinateSystem.setOnMouseClicked(event -> {
@@ -194,16 +214,17 @@ public class Draw extends Application {
             System.out.println("width resize");
             this.coordinateSystemWidth = primaryStage.getWidth();
             coordinateSystem.getChildren().removeIf(node -> coordinateSystem.getChildren().contains(node));
-            drawCoordinateSystem();
+
+//            drawCoordinateSystem(); // redrawMyPoints also draws the coordinate system
             redrawMyPoints();
         });
         //width resize listener
         //coordinateSystem.getHeight() is sometimes inconsistent
+        //primary stage .get Height() is not the right Height (Toolbars), so we have to calculate the right one.
         primaryStage.heightProperty().addListener((obs, oldVal, newVal) -> {
             System.out.println("height resize");
             double centerHeightOffSet = 50;// 50 px layout border
             centerHeightOffSet += toolBarTop.getHeight() + toolBarBottom.getHeight();
-            System.out.println("offset" + centerHeightOffSet);
             double height = primaryStage.getHeight() - centerHeightOffSet;
             if (Math.abs(height - coordinateSystem.getHeight()) > 10) {
                 this.coordinateSystemHeight = primaryStage.getHeight() - centerHeightOffSet;
@@ -214,19 +235,19 @@ public class Draw extends Application {
             }
             this.coordinateSystemWidth = primaryStage.getWidth();
 //            this.coordinateSystemHeight = primaryStage.getHeight(); // --> inconsistent
-
-            System.out.println("coordinateSystem height " + coordinateSystem.getHeight());
+            System.out.println("inconsistent coordinateSystem height " + coordinateSystem.getHeight());// inconsistent print to se the difference
 
             coordinateSystem.getChildren().removeIf(node -> coordinateSystem.getChildren().contains(node));
-            drawCoordinateSystem();
+//            drawCoordinateSystem();
             redrawMyPoints();
         });
         drawCoordinateSystem();
     }
 
     private void drawCoordinateSystem() {
+        coordinateSystemLinesGroup.getChildren().clear();
         double width = this.coordinateSystemWidth;
-        double height = this.coordinateSystemHeight +50;
+        double height = this.coordinateSystemHeight + 50;
         int distance = 15;
         for (int i = 0; i < width / distance; i++) {
             //vertical lines
@@ -236,10 +257,9 @@ public class Draw extends Application {
             line.setEndX(distance * i);
             line.setEndY(height);
             line.setFill(Color.GREY);
-            coordinateSystem.getChildren().add(line);
-//            add vertical and horizontal lines to draw a coordinate system
+            coordinateSystemLinesGroup.getChildren().add(line);
         }
-        for (int i = 0; i < width / distance; i++) {
+        for (int i = 0; i < height / distance; i++) {
             //horizontal lines
             Line line = new Line();
             line.setStartX(0);
@@ -247,52 +267,49 @@ public class Draw extends Application {
             line.setEndX(width);
             line.setEndY(distance * i);
             line.setFill(Color.GREY);
-            coordinateSystem.getChildren().add(line);
+            coordinateSystemLinesGroup.getChildren().add(line);
         }
+        coordinateSystem.getChildren().add(coordinateSystemLinesGroup);
     }
 
     /**
+     * try to draw intersection Points
      * draw Point
-     * @param point
+     *
+     * @param point - point to draw
      */
     private void maybeDrawPoint(MyPoint point) {
-        System.out.println("try");
+        System.out.println("try to draw intersection");
         if (point == null) {
             return;
         }
-//        point.setCenterX(point.getX());
-//        point.setCenterY(point.getY());
         if (this.coordinateSystem.getChildren().contains(point)
                 || this.getClosestPoint(point, 0.01) != null) {
-            System.out.println("duplicate intersection");
+            //intersection near or on a MyPoint --> move a bit and draw smaller
+            System.out.println("intersection on MyPoint");
             double x = point.getX() + 0.01;
             double y = point.getY() + 0.01;
-            MyPoint point2 = new MyPoint(x, y);
-            point2.setCenterX(x);
-            point2.setCenterY(y);
-//            addEventListener(point2);
-            point2.setRadius(5);
-            point2.setFill(Color.BLUE);
-            point2.setColor(Color.BLUE);
-            if (!this.coordinateSystem.getChildren().contains(point2)) {
-                this.coordinateSystem.getChildren().add(point2);//draw point
-                this.myPointIntersectionArrayList.add(point2);//save point in Array List
-
-            }
+            point = new MyPoint(x, y);
+            point.setCenterX(x);
+            point.setCenterY(y);
+            point.setRadius(5);
         } else {
-            addEventListener(point);
+            //intersection not on a MyPoint
+            addEventListener(point);//only add event listener to Intersections not overlapping other Points
             point.setRadius(7.5);
+        }
+        if (!this.coordinateSystem.getChildren().contains(point) && !this.myPointIntersectionArrayList.contains(point)) {
             point.setFill(Color.BLUE);
             point.setColor(Color.BLUE);
             this.coordinateSystem.getChildren().add(point);//draw point
-            this.myPointIntersectionArrayList.add(point);
-
+            this.myPointIntersectionArrayList.add(point);//save point in Array List
+        } else {
+            System.out.println("failed to draw");
         }
-
-
     }
 
     private void addEventListener(MyPoint point) {
+        System.out.println("!!!add event listener");
         //Add a Mouse entered(hovering over Point) event listener
         point.setOnMouseEntered(eventEvent -> {
             removeTemporaryLabel();
@@ -314,6 +331,7 @@ public class Draw extends Application {
 
         //Add a Mouse click listener
         point.setOnMouseClicked(event1 -> {
+            System.out.println("registered mouse click");
             if (this.recentMyPoint == null) {
                 //when we click on a MyPoint the first tine --> remember that point
                 this.recentMyPoint = point;
@@ -327,14 +345,17 @@ public class Draw extends Application {
                     this.drawLine(point);
                 } else {
                     this.drawCircle(point);
+                    //redraw every shape
+//                    this.redrawMyPoints();
+
                 }
                 if (this.recentMyPoint != null) {
                     this.recentMyPoint.setStrokeWidth(0);
                 }// reset stroke that is created when selecting a point
                 this.recentMyPoint = null;//reset recent point variable
             }
+            System.out.println("click click click");
             //redraw the points on top of the shapes
-            this.redrawMyPoints();
         });
     }
 
@@ -354,21 +375,21 @@ public class Draw extends Application {
     public void drawMyPoint(MouseEvent event) {
         //create My Point
         MyPoint point = new MyPoint(event.getX(), event.getY());
-       drawMyPoint(point);
+        drawMyPoint(point);
     }
 
     /**
      * add a new MyPoint
+     *
      * @param point - point
      */
-    public void drawMyPoint(MyPoint point){
+    public void drawMyPoint(MyPoint point) {
         point.setRadius(7.5);
         if (this.coordinateSystem.getChildren().contains(point)
                 || this.getClosestPoint(point, 15) != null) {
             System.out.println("warning: duplicate MyPoint");
             return;
         }
-
         //Add a Mouse entered(hovering over Point) event listener
         addEventListener(point);
 
@@ -377,7 +398,7 @@ public class Draw extends Application {
         this.addMyPointToArrayList(point);//save point in Array List
 
         if (this.recentMyPoint != null) {
-            this.recentMyPoint.setStrokeWidth(0);// width
+            this.recentMyPoint.setStrokeWidth(0);// reset blue stroke
         }
         this.recentMyPoint = null;//reset recent point
         //when creating a new Point the remembered point is rested.
@@ -390,24 +411,38 @@ public class Draw extends Application {
      * @param hit myPoint
      */
     public void drawLine(MyPoint hit) {
-        MyLine line = new MyLine(hit, this.recentMyPoint, this.coordinateSystemWidth);
-        line.setStrokeWidth(4);//line width
-        line.setStroke(this.colorPicker.getValue());//line color
-        //add a mouse entered event Listener
-        line.setOnMouseEntered(eventEvent -> {
-            System.out.println("entered line");
-            addTemporaryLabel("Slope:" + Utilities.round2(line.getSlope() * -1)
-                            + "\nIntercept:" + Utilities.round2(this.coordinateSystemHeight - line.getIntercept()),
-                    eventEvent.getX(), eventEvent.getY());
-        });
-        //add a mouse exited event listener
-        line.setOnMouseExited(eventEvent -> {
-            System.out.println("exited line");
-            removeTemporaryLabel();
-        });
+        removeTemporaryLabel();
+        try {
+            System.out.println("started drawing line");
+            MyLine line;
+            line = new MyLine(hit, this.recentMyPoint, this.coordinateSystemWidth);
+            line.setStrokeWidth(4);//line width
+            line.setStroke(this.colorPicker.getValue());//line color
+            //add a mouse entered event Listener
+            MyLine finalLine = line;
+            line.setOnMouseEntered(eventEvent -> {
+                System.out.println("entered line");
+                addTemporaryLabel("Slope:" + Utilities.round2(finalLine.getSlope() * -1)
+                                + "\nIntercept:" + Utilities.round2(this.coordinateSystemHeight - finalLine.getIntercept()),
+                        eventEvent.getX(), eventEvent.getY());
+                System.out.println("on line...");
+            });
+            System.out.println("drawing line...");
 
-        this.coordinateSystem.getChildren().add(line);//Draw line
-        this.addMyLineToArrayList(line);//save line
+            //add a mouse exited event listener
+            line.setOnMouseExited(eventEvent -> {
+                System.out.println("exited line");
+                removeTemporaryLabel();
+            });
+
+            this.coordinateSystem.getChildren().add(line);//Draw line
+            this.addMyLineToArrayList(line);//save line
+        } catch (Exception e) {
+            System.out.println("why are you not working");
+            e.printStackTrace();
+        }
+        System.out.println("ended drawing line");
+
     }
 
     /**
@@ -452,6 +487,8 @@ public class Draw extends Application {
     public void redrawMyPoints() {
         System.out.println("redrawing...");
         removeTemporaryLabel();
+        coordinateSystem.getChildren().remove(coordinateSystemLinesGroup);
+
         ArrayList<MyCircle> currentCircles = this.myCircleArrayList;
         //first redraw filled circles
         for (MyCircle circle : currentCircles
@@ -461,6 +498,8 @@ public class Draw extends Application {
                 this.coordinateSystem.getChildren().add(circle);
             }
         }
+        drawCoordinateSystem();
+//        coordinateSystem.getChildren().add(coordinateSystemLinesGroup);
         //second redraw bordered circles
         for (MyCircle circle : currentCircles
         ) {
@@ -472,17 +511,40 @@ public class Draw extends Application {
         //third redraw myLines
         for (MyLine line : this.myLineArrayList
         ) {
-            this.coordinateSystem.getChildren().remove(line);
-            this.coordinateSystem.getChildren().add(line);
+            try {
+//                if (!line.isVertical()) {
+                    this.coordinateSystem.getChildren().remove(line);
+                    this.coordinateSystem.getChildren().add(line);
+//                }
+            } catch (Exception e) {
+                System.out.println(ANSI_RED + "suppressed exception regarding the vertical line" + ANSI_RESET);
+
+//                e.printStackTrace();
+            }
         }
-        //last redraw myPoints on top of everything
-        for (MyPoint point : this.myPointArrayList
+        // redraw myPoints on top of everything
+        try {
+            for (MyPoint point : this.myPointArrayList
+            ) {
+//                if (this.coordinateSystem.getChildren().contains(point)||this.myPointArrayList.contains(point)) {
+                    this.coordinateSystem.getChildren().remove(point);
+//                }
+                this.coordinateSystem.getChildren().add(point);
+            }
+        } catch (Exception e) {
+            System.out.println(ANSI_RED + "suppressed exception regarding the vertical line" + ANSI_RESET);
+            this.redrawMyPoints();
+//            e.printStackTrace();
+        }
+        //redraw intersection Points
+        for (MyPoint point : this.myPointIntersectionArrayList
         ) {
-            System.out.println("count");
-            this.coordinateSystem.getChildren().remove(point);
+            if (this.coordinateSystem.getChildren().contains(point) || this.myPointIntersectionArrayList.contains(point)) {
+                this.coordinateSystem.getChildren().remove(point);
+            }
             this.coordinateSystem.getChildren().add(point);
         }
-        System.out.println("updated MyPoints drawing");
+        System.out.println("updated MyPoints and Intersections");
     }
 
     /**
@@ -545,6 +607,7 @@ public class Draw extends Application {
      * @param y    - y- coordinate (offset 10)
      */
     public void addTemporaryLabel(String text, double x, double y) {
+        removeTemporaryLabel();
         temporaryLabel = new Label(text);
         temporaryLabel.setLayoutX(x + 10);
         temporaryLabel.setLayoutY(y + 10);
